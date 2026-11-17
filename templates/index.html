@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Altas e baixas - B3 e EUA</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --txt: #1d2330; --mut: #6b7385;
+    --bd: #e3e6ec; --pos: #1e9e57; --neg: #d6372f; --acc: #2b6cf6; --sel: #eaf1ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1b1f29; --txt: #e8ebf2; --mut: #9aa3b5;
+      --bd: #2b3140; --pos: #3ecf7f; --neg: #ff6159; --acc: #5b8dff; --sel: #232c42;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
+         background: var(--bg); color: var(--txt); }
+  header { padding: 14px 16px 8px; display: flex; flex-wrap: wrap; gap: 10px;
+           align-items: center; justify-content: space-between; }
+  h1 { font-size: 20px; margin: 0; }
+  .mut { color: var(--mut); font-size: 13px; }
+  .busca { display: flex; gap: 6px; }
+  input, button { font: inherit; color: var(--txt); background: var(--card);
+                  border: 1px solid var(--bd); border-radius: 8px; padding: 7px 10px; }
+  input { width: 190px; text-transform: uppercase; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.ativo { background: var(--acc); border-color: var(--acc); color: #fff; }
+  .chips { padding: 0 16px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { font-size: 13px; padding: 4px 10px; border-radius: 999px; }
+  main { display: grid; grid-template-columns: 420px 1fr; gap: 14px; padding: 0 16px 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+          padding: 12px; min-width: 0; }
+  .card h2 { font-size: 15px; margin: 8px 0; }
+  .controles { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+               justify-content: space-between; align-items: center; }
+  .grupo { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tabela { overflow: auto; max-height: 640px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--bd);
+           white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--card); color: var(--mut);
+       font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover, tbody tr.sel { background: var(--sel); }
+  .pos { color: var(--pos); } .neg { color: var(--neg); }
+  #barras { width: 100%; height: 580px; }
+  .topo { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+          justify-content: space-between; margin-bottom: 8px; }
+  #titulo { font-size: 22px; font-weight: 700; }
+  #preco { font-size: 18px; margin-left: 10px; }
+  #grafico { width: 100%; height: 460px; }
+  #resumo { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Maiores altas e baixas</h1>
+    <div class="mut">B3 e bolsas dos EUA &middot; dados do Yahoo Finance</div>
+  </div>
+  <div class="busca">
+    <input id="busca" list="lista" placeholder="PETR4, NVDA, SpaceX…" maxlength="20" autocomplete="off">
+    <datalist id="lista">
+      {% for t in tickers %}<option value="{{ t }}">{% endfor %}
+    </datalist>
+    <button id="btnBusca">Ver</button>
+    <button id="btnAtualizar" title="Atualizar rankings">&#8635;</button>
+  </div>
+</header>
+
+<div class="chips" id="atalhos">
+  <button data-t="NVDA">NVIDIA</button>
+  <button data-t="SPCX">SpaceX</button>
+  <button data-t="AAPL">Apple</button>
+  <button data-t="TSLA">Tesla</button>
+  <button data-t="MSFT">Microsoft</button>
+  <button data-t="GOOGL">Google</button>
+  <button data-t="PETR4">Petrobras</button>
+  <button data-t="VALE3">Vale</button>
+  <button data-t="^BVSP">Ibovespa</button>
+</div>
+
+<main>
+  <section class="card">
+    <div class="controles">
+      <div class="grupo" id="mercados">
+        <button data-m="b3" class="ativo">B3</button>
+        <button data-m="eua">EUA</button>
+      </div>
+      <div class="grupo" id="lados">
+        <button data-l="baixas" class="ativo">Maiores baixas</button>
+        <button data-l="altas">Maiores altas</button>
+      </div>
+    </div>
+    <div class="controles">
+      <div class="grupo" id="vistas">
+        <button data-v="tabela" class="ativo">Tabela</button>
+        <button data-v="barras">Gráfico</button>
+      </div>
+      <div class="mut" id="dataRef">&nbsp;</div>
+    </div>
+    <h2 id="tituloRank"></h2>
+
+    <div class="tabela" id="vistaTabela">
+      <table id="ranking">
+        <thead><tr><th>Ativo</th><th>Preço</th><th>Dia</th><th>Semana</th><th>12m</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="vistaBarras" style="display:none"><div id="barras"></div></div>
+  </section>
+
+  <section class="card" id="cardGrafico">
+    <div class="topo">
+      <div><span id="titulo">–</span><span id="preco"></span></div>
+      <div class="mut" id="status"></div>
+    </div>
+
+    <div class="controles">
+      <div class="grupo" id="periodos">
+        <button data-p="1d">1D</button>
+        <button data-p="5d">5D</button>
+        <button data-p="1m">1M</button>
+        <button data-p="6m">6M</button>
+        <button data-p="1a" class="ativo">1A</button>
+        <button data-p="5a">5A</button>
+      </div>
+      <div class="grupo" id="tipos">
+        <button data-t="linha" class="ativo">Linha</button>
+        <button data-t="candle">Candles</button>
+      </div>
+    </div>
+
+    <div id="grafico"></div>
+    <div id="resumo"></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const NOMES = {{ nomes|tojson }};
+
+let mercado = 'b3', lado = 'baixas', vista = 'tabela';
+let ticker = null, periodo = '1a', tipo = 'linha';
+let reqId = 0;
+const cache = {};   // ranking por mercado
+
+const fmtPct = v => v == null ? '–' : (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+const fmtPreco = (v, m) => (m ? m + ' ' : '') +
+  v.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const cls = v => v == null ? '' : (v < 0 ? 'neg' : 'pos');
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function ativar(grupoSel, botao) {
+  document.querySelectorAll(grupoSel + ' button').forEach(b => b.classList.toggle('ativo', b === botao));
+}
+
+// ---------- ranking (tabela + barras) ----------
+async function carregarRanking(forcar = false) {
+  const m = mercado;
+  if (forcar) delete cache[m];
+  if (!cache[m]) {
+    $('#ranking tbody').innerHTML = '<tr><td colspan="5" class="mut">Carregando…</td></tr>';
+    try {
+      const r = await fetch('/api/ranking?mercado=' + m);
+      if (!r.ok) throw new Error();
+      cache[m] = await r.json();
+    } catch (e) {
+      if (m !== mercado) return;
+      $('#ranking tbody').innerHTML = '<tr><td colspan="5" class="neg">Erro ao carregar. Tente atualizar.</td></tr>';
+      Plotly.purge('barras');
+      return;
+    }
+  }
+  if (m !== mercado) return;   // o usuário já trocou de mercado
+  renderRanking();
+}
+
+function renderRanking() {
+  const d = cache[mercado];
+  if (!d) return;
+  const lista = d[lado];
+  const nomeMercado = mercado === 'b3' ? 'B3' : 'EUA';
+  $('#tituloRank').textContent =
+    (lado === 'baixas' ? '20 maiores quedas do pregão' : '20 maiores altas do pregão') + ' · ' + nomeMercado;
+  $('#dataRef').textContent = 'Pregão de ' + d.data_ref;
+
+  $('#ranking tbody').innerHTML = lista.map(a => `
+    <tr data-t="${a.ticker}">
+      <td><b>${a.ticker}</b></td>
+      <td>${a.preco == null ? '–' : fmtPreco(a.preco, d.moeda)}</td>
+      <td class="${cls(a.dia)}"><b>${fmtPct(a.dia)}</b></td>
+      <td class="${cls(a.semana)}">${fmtPct(a.semana)}</td>
+      <td class="${cls(a.ano)}">${fmtPct(a.ano)}</td>
+    </tr>`).join('');
+  document.querySelectorAll('#ranking tbody tr').forEach(tr =>
+    tr.onclick = () => selecionar(tr.dataset.t, true));
+  marcarLinha();
+
+  if (vista === 'barras') desenharBarras(lista);
+  if (!ticker && lista.length) selecionar(lista[0].ticker);
+}
+
+function marcarLinha() {
+  document.querySelectorAll('#ranking tbody tr').forEach(tr =>
+    tr.classList.toggle('sel', tr.dataset.t === ticker));
+}
+
+function desenharBarras(lista) {
+  const xs = lista.map(a => a.dia);
+  const lo = Math.min(0, ...xs), hi = Math.max(0, ...xs);
+  const pad = (hi - lo) * 0.22 || 1;
+  const trace = {
+    type: 'bar', orientation: 'h',
+    y: lista.map(a => a.ticker), x: xs,
+    marker: {color: xs.map(v => v < 0 ? '#d6372f' : '#1e9e57')},
+    text: xs.map(fmtPct), textposition: 'outside', cliponaxis: false,
+    hovertemplate: '%{y}: %{x:.2f}%<extra></extra>',
+  };
+  const layout = {
+    margin: {l: 62, r: 14, t: 8, b: 30},
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: {color: cssVar('--txt')},
+    xaxis: {range: [lo - pad, hi + pad], ticksuffix: '%', gridcolor: cssVar('--bd'), zeroline: true},
+    yaxis: {autorange: 'reversed', automargin: true},
+    showlegend: false,
+  };
+  Plotly.react('barras', [trace], layout, {responsive: true, displayModeBar: false});
+  const el = $('#barras');
+  if (el.removeAllListeners) el.removeAllListeners('plotly_click');
+  el.on('plotly_click', ev => selecionar(ev.points[0].y, true));
+}
+
+// ---------- gráfico de preços ----------
+function selecionar(t, rolar = false) {
+  ticker = t.toUpperCase();
+  marcarLinha();
+  desenhar();
+  if (rolar && window.innerWidth <= 900)
+    $('#cardGrafico').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+async function desenhar() {
+  if (!ticker) return;
+  const meu = ++reqId;
+  $('#titulo').textContent = ticker.replace('.SA', '');
+  $('#status').textContent = 'Carregando…';
+  try {
+    const r = await fetch(`/api/historico/${encodeURIComponent(ticker)}?periodo=${periodo}`);
+    const d = await r.json();
+    if (meu !== reqId) return;   // chegou uma resposta mais nova
+    if (!r.ok) throw new Error(d.erro || 'Erro');
+
+    const fech = d.fechamento;
+    const ini = fech[0], fim = fech[fech.length - 1];
+    const variacao = (fim / ini - 1) * 100;
+    const cor = variacao < 0 ? '#d6372f' : '#1e9e57';
+
+    const trace = tipo === 'candle'
+      ? { x: d.datas, open: d.abertura, high: d.maxima, low: d.minima, close: fech,
+          type: 'candlestick',
+          increasing: {line: {color: '#1e9e57'}}, decreasing: {line: {color: '#d6372f'}} }
+      : { x: d.datas, y: fech, type: 'scatter', mode: 'lines',
+          line: {color: cor, width: 2}, hovertemplate: '%{y:.2f}<extra></extra>' };
+
+    const quebras = [{bounds: ['sat', 'mon']}];
+    if (d.intraday && d.abre != null) quebras.push({pattern: 'hour', bounds: [d.fecha, d.abre]});
+
+    const grade = cssVar('--bd');
+    const layout = {
+      margin: {l: 60, r: 12, t: 8, b: 36},
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: {color: cssVar('--txt')},
+      xaxis: {rangeslider: {visible: false}, rangebreaks: quebras, gridcolor: grade},
+      yaxis: {tickprefix: d.moeda ? d.moeda + ' ' : '', gridcolor: grade},
+      dragmode: 'pan', hovermode: 'x unified', showlegend: false,
+    };
+    Plotly.react('grafico', [trace], layout,
+      {responsive: true, scrollZoom: true, displaylogo: false});
+
+    $('#preco').innerHTML = `${fmtPreco(fim, d.moeda)} <span class="${cls(variacao)}">${fmtPct(variacao)}</span>`;
+    const min = Math.min(...d.minima), max = Math.max(...d.maxima);
+    $('#resumo').innerHTML =
+      `<span class="mut">Mínima do período: <b>${fmtPreco(min, d.moeda)}</b></span>` +
+      `<span class="mut">Máxima do período: <b>${fmtPreco(max, d.moeda)}</b></span>` +
+      `<span class="mut">Distância da máxima: <b class="neg">${fmtPct((fim / max - 1) * 100)}</b></span>`;
+    $('#status').textContent = d.datas.length < 30 && periodo !== '1d' && periodo !== '5d'
+      ? 'Histórico curto (ativo recente)' : '';
+  } catch (e) {
+    if (meu !== reqId) return;
+    $('#status').textContent = e.message;
+    Plotly.purge('grafico');
+    $('#resumo').innerHTML = '';
+    $('#preco').innerHTML = '';
+  }
+}
+
+// ---------- eventos ----------
+$('#mercados').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  mercado = b.dataset.m; ativar('#mercados', b);
+  carregarRanking();
+};
+$('#lados').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  lado = b.dataset.l; ativar('#lados', b);
+  renderRanking();
+};
+$('#vistas').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  vista = b.dataset.v; ativar('#vistas', b);
+  $('#vistaTabela').style.display = vista === 'tabela' ? '' : 'none';
+  $('#vistaBarras').style.display = vista === 'barras' ? '' : 'none';
+  renderRanking();
+};
+$('#periodos').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  periodo = b.dataset.p; ativar('#periodos', b);
+  desenhar();
+};
+$('#tipos').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  tipo = b.dataset.t; ativar('#tipos', b);
+  desenhar();
+};
+$('#atalhos').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  selecionar(b.dataset.t, true);
+};
+
+function buscar() {
+  const bruto = $('#busca').value.trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!bruto) return;
+  selecionar(NOMES[bruto] || bruto, true);
+}
+$('#btnBusca').onclick = buscar;
+$('#busca').addEventListener('keydown', e => { if (e.key === 'Enter') buscar(); });
+$('#btnAtualizar').onclick = () => carregarRanking(true);
+
+carregarRanking();
+</script>
+</body>
+</html>
